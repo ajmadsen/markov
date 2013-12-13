@@ -1,0 +1,49 @@
+#!/usr/bin/env ruby
+
+require 'sequel'
+
+config_dir = File.expand_path '~/.markov'
+unless Dir.exist? config_dir
+  Dir::mkdir config_dir
+end
+
+Sequel::Model.db = Sequel.sqlite "#{config_dir}/markov.db"
+
+require 'markov'
+require 'commander/import'
+
+program :name, 'Markov'
+program :version, '0.0.1'
+program :description, 'Program that builds markov chains based on input text and generates strings based on the markov chains.'
+
+command :process do |c|
+  c.syntax = 'markov process <chain> <file>'
+  c.description = 'Processes input text to generate markov chain.'
+  c.action do |args, options|
+    Markov::TextProcessor.new(args[0], 1).process(args[1])
+  end
+end
+
+command :filter do |c|
+  c.syntax = 'markov filter <skype_text>'
+  c.description = 'Filters skype text to remove xml junk'
+  c.action do |args, options|
+    temp = Tempfile.new 'filter'
+    File.open(args[0]) do |f|
+      f.readlines.each do |line|
+        line.strip!
+        line.downcase!
+        line.gsub!(/<.*?>/, "")
+        line.gsub! "&amp;", "&"
+        line.gsub! "&quot;", "\""
+        line.gsub! "&apos;", "\'"
+        line.gsub! "&gt;", ">"
+        line.gsub! "&lt;", "<"
+        temp.write line + "\n"
+      end
+    end
+    temp.close
+    FileUtils.mv(temp, args[0])
+  end
+end
+
