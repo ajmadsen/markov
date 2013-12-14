@@ -6,39 +6,77 @@ module Markov
     @STRATEGIES = [:dumb].freeze
 
     def initialize(chain, rank, strategy = self.class.strategies.first)
-      @chain = Chain.where(:name => chain, :rank => rank).first || Chain.create(:name => chain, :rank => rank)
+      @chain = Chain.find_or_create(:name => chain, :rank => rank)
       if self.class.strategies.include? strategy
         @strategy = strategy
       else
         raise ArgumentError, "#{self.class.name} does not provide strategy #{strategy}"
       end
+
+      @data = ""
+      @segments = []
+      @pairings = {}
     end
 
     def process(file)
-      word_id = {}
-      group_id = {}
-      Sequel::Model.db.transaction do
-        File.open(file) do |f|
-          line_count = f.read.count("\n")
-          f.rewind
-          f.readlines.each_with_index do |line, idx|
-            fragments = [""] * @chain.rank + line.split + [""]
-            fragments.each_cons(@chain.rank + 1).each do |groups|
-              word_list = groups.map do |word|
-                word_id[word] ||= Word.find_or_create(:word => word)
-              end
-              group_string = word_list[0..-2].map(&:id).join(",")
-              group = group_id[group_string] ||= Group.find_or_create(:list => group_string)
-              @chain.add_pairing(:group => group, :word => word_list[-1])
-              print "#{idx}/#{line_count}\r" if idx % 100 == 0
-            end
-          end
-        end
-      end
+      @current_file = file
+      slurp_file
+      process_segments
+      build_pairings
+      dump_pairings
     end
 
     def self.strategies
       @STRATEGIES
     end
+
+    private
+
+      def slurp_file
+        print "Loading file..."
+        File.open(@current_file) do |f|
+          @data += f.read
+        end
+        puts "done."
+      end
+
+      def process_segments
+        print "Processing segments..."
+        @segments += @data.split "\n"
+        puts "done."
+      end
+
+      def build_pairings
+        db = Sequel::Model.db
+        word_map = {}
+        group_map = {}
+        unless word_map[""] = db[:words].where(:word => "").get(:id)
+          word_map[""] = db[:words].insert(:word => "")
+        end
+        len = @segments.length
+        db.transaction do
+          @segments.each_with_index do |line, idx|
+            line = [""] * @chain.rank + line.split + [""]
+            line.each_cons(@chain.rank+1) do |parts|
+              next_word = word_map[parts[-1]] ||= db[:words].where(:word => parts[-1]).get(:id)
+              unless next_word
+                next_word = word_map[parts[-1]] ||= db[:words].insert(:word => parts[-1])
+              end
+              #group_lookup = db[:words].where(:id => parts[0..-2]).to_hash(:word, :id)
+              group = parts[0..-2].map {|w| word_map[w]}.join ","
+              group_id = group_map[group] ||= db[:groups].where(:list => group).get(:id)
+              unless group_id
+                group_id = group_map[group] ||= db[:groups].insert(:list => group)
+              end
+              db[:pairings].insert(:chain_id => @chain.id, :group_id => group_id, :word_id => next_word)
+              print "Building segments...#{idx}/#{len}\r" if idx % 100 == 0
+            end
+          end
+        end
+        puts "Building pairings...#{len} segments processed."
+      end
+
+      def dump_pairings
+      end
   end
 end
