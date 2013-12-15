@@ -15,25 +15,26 @@ module Markov
       tokenizer = @tokenizer.new
       db = Sequel::Model.db
 
+      word_id_map = {}
+      state_id_map = {}
+
       chunker.each_with_index do |chunk, idx|
         tokens = [""] * @chain.rank + tokenizer.tokenize(chunk) + [""]
         tokens.each_cons(@chain.rank+1) do |parts|
-          state_list = parts[0..-2]
-          next_word_string = parts[-1]
-
-          next_word = db[:words].where(:word => next_word_string).get(:id)
-          unless next_word
-            next_word = db[:words].insert(:word => next_word_string)
+          parts.map! do |word|
+            word_id = word_id_map[word] ||= db[:words].where(:word => word).get(:id)
+            unless word_id
+              word_id_map[word] = db[:words].insert(:word => word)
+            end
           end
 
-          state_map = db[:words].where(:word => state_list).to_hash(:word, :id)
-          state_string = state_list.map {|w| state_map[w]}.join(",")
-          state = db[:states].where(:list => state_string).get(:id)
-          unless state
-            state = db[:states].insert(:list => state_string)
+          state_string = parts[0..-2].join(",")
+          state_id = state_id_map[state_string] ||= db[:states].where(:list => state_string).get(:id)
+          unless state_id
+            state_id = state_id_map[state_string] = db[:states].insert(:list => state_string)
           end
 
-          db[:pairings].insert(:chain_id => @chain.id, :state_id => state, :word_id => next_word)
+          db[:pairings].insert(:chain_id => @chain.id, :state_id => state_id, :word_id => parts[-1])
 
           print "Processing...#{idx}\r" if idx % 100 == 0
         end
