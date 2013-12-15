@@ -20,7 +20,9 @@ command :process do |c|
   c.syntax = 'markov process <chain> <file>'
   c.description = 'Processes input text to generate markov chain.'
   c.action do |args, options|
-    Markov::TextProcessor.new(args[0], 3).process(args[1])
+    File.open(args[1]) do |f|
+      Markov::TextProcessor.new(args[0], 3).process(f)
+    end
   end
 end
 

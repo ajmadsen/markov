@@ -1,6 +1,6 @@
 require 'markov/version'
 require 'markov/models'
-require 'markov/textprocessor'
-require 'sqlite3'
+require 'markov/text_processor'
+require 'markov/strategies/all'
 require 'sequel'
 
