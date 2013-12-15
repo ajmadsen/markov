@@ -7,7 +7,7 @@ unless Dir.exist? config_dir
   Dir::mkdir config_dir
 end
 
-Sequel::Model.db = Sequel.sqlite "#{config_dir}/markov.db"
+Sequel::Model.db = Sequel.sqlite "#{config_dir}/markov.db", synchronous: :off
 
 require 'markov'
 require 'commander/import'
