@@ -1,16 +1,14 @@
 #!/usr/bin/env ruby
 
-require 'sequel'
+require 'markov'
+require 'commander/import'
 
 config_dir = File.expand_path '~/.markov'
 unless Dir.exist? config_dir
   Dir::mkdir config_dir
 end
 
-Sequel::Model.db = Sequel.sqlite "#{config_dir}/markov.db", synchronous: :off
-
-require 'markov'
-require 'commander/import'
+DB = Markov::Database.new "#{config_dir}/markov.db"#, synchronous: :off
 
 program :name, 'Markov'
 program :version, '0.0.1'
@@ -21,7 +19,7 @@ command :process do |c|
   c.description = 'Processes input text to generate markov chain.'
   c.action do |args, options|
     File.open(args[1]) do |f|
-      Markov::TextProcessor.new(args[0], 3).process(f)
+      Markov::TextProcessor.new(DB, args[0], 3).process(f)
     end
   end
 end
