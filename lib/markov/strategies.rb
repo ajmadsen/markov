@@ -1,8 +1,8 @@
 module Markov
   class ChunkingStrategy
-    class << self
-      @implements = :null
+    @implements = :null
 
+    class << self
       attr_reader :implements
 
       def inherited(base)
@@ -29,9 +29,9 @@ module Markov
   end
 
   class TokenizingStrategy
-    class << self
-      @implements = :null
+    @implements = :null
 
+    class << self
       attr_reader :implements
 
       def inherited(base)
