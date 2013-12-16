@@ -30,7 +30,7 @@ command :filter do |c|
   c.action do |args, options|
     temp = Tempfile.new 'filter'
     File.open(args[0]) do |f|
-      f.readlines.each do |line|
+      f.each_line do |line|
         line.strip!
         line.downcase!
         line.gsub!(/<.*?>/, "")
