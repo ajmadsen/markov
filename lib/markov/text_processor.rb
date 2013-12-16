@@ -26,6 +26,7 @@ module Markov
 
       db.transaction do
         chunker.each_with_index do |chunk, idx|
+          GC.disable
           tokens = [""] * @chain.rank + tokenizer.tokenize(chunk) + [""]
           tokens.each_cons(@chain.rank+1) do |parts|
             parts.map! do |word|
@@ -39,6 +40,7 @@ module Markov
 
             print "Processing...#{idx}\r" if idx % 100 == 0
           end
+          GC.enable
         end
       end
     end

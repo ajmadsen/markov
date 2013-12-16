@@ -45,7 +45,6 @@ module Markov
       foreign_key :chain_id, :chains
       foreign_key :state_id, :states
       foreign_key :word_id,  :words
-      Integer     :count, null: false, default: 0
     end
 
     many_to_one   :chain
