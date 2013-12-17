@@ -1,4 +1,3 @@
-require 'sequel'
 require 'markov/database'
 require 'markov/strategies'
 
