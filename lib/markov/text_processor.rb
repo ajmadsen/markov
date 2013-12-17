@@ -14,10 +14,13 @@ module Markov
     def process(io)
       chunker = @chunker.new io
       tokenizer = @tokenizer.new
+      size = io.stat.size?
+      bytes = 0
 
       @db.transaction do
         chunker.each_with_index do |chunk, idx|
-          #GC.disable
+          bytes += chunk.size
+
           tokens = [""] * @rank + tokenizer.tokenize(chunk) + [""]
           tokens.each_cons(@rank+1) do |parts|
             parts.map! do |word|
@@ -28,10 +31,9 @@ module Markov
             state_id = @db.get_state(state_string) || @db.put_state(state_string)
 
             @db.put_association @chain_id, state_id, parts[-1]
-
-            print "Processing...#{idx}\r" if idx % 100 == 0
           end
-          #GC.enable
+
+          yield bytes, size if block_given?
         end
       end
     end
