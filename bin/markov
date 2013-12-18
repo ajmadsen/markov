@@ -1,49 +1,54 @@
 #!/usr/bin/env ruby
 
 require 'markov'
-require 'commander/import'
+require 'trollop'
 
-config_dir = File.expand_path '~/.markov'
-unless Dir.exist? config_dir
-  Dir::mkdir config_dir
-end
+COMMANDS = %w(chain process generate)
 
-DB = Markov::Database.new "#{config_dir}/markov.db"#, synchronous: :off
-
-program :name, 'Markov'
-program :version, '0.0.1'
-program :description, 'Program that builds markov chains based on input text and generates strings based on the markov chains.'
-
-command :process do |c|
-  c.syntax = 'markov process <chain> <file>'
-  c.description = 'Processes input text to generate markov chain.'
-  c.action do |args, options|
-    File.open(args[1]) do |f|
-      Markov::TextProcessor.new(DB, args[0], 3).process(f)
+def parse_cmd_opts(cmd)
+  case cmd
+  when "chain"
+    Trollop::options do
+      banner "usage: markov chain [options]"
+      opt :create, 'Create chain with given name', :type => String
+      opt :rank, 'Rank of chain to be created', :type => Integer
+      opt :destroy, 'Destroy chain with given name', :type => String
+      opt :list, 'List all known chains'
+      conflicts :create, :destroy, :list
+      depends :create, :rank
     end
+  when "process"
+    Trollop::options do
+      banner "usage: markov process [options] <file1> [[file2]...]"
+      opt :chain, 'Chain to build on', :type => String, :default => 'default'
+      opt :chunker, 'Strategy to break file into chunks', :type => String, :default => 'line'
+      opt :tokenizer, 'Strategy to tokenize chunks of text', :type => String, :default => 'naive'
+      opt :chunk_size, 'Number of chunks to consider at once', :type => Integer, :default => 1, :short => '-s'
+      opt :chunk_joiner, 'Separator used when processing mulitple chunks at once', :type => String, :default => ' ', :short => '-j'
+    end
+  when "generate"
+    Trollop::options do
+      banner "usage: markov generate [options]"
+      opt :chain, 'Chain to generate from', :type => String, :default => 'default'
+      opt :strategy, 'Strategy to generate text', :type => String, :default => 'line'
+      opt :number, 'Number of generations to run', :type => Integer, :default => 1
+      opt :min, 'Minimum length of generated text, in words', :type => Integer, :default => 0
+      opt :max, 'Maximum length of generated text, in words', :type => Integer, :default => -1
+    end
+  else
+    Trollop::die "unknown command #{cmd.inspect}. Available options: [#{COMMANDS.join "|"}]"
   end
 end
 
-command :filter do |c|
-  c.syntax = 'markov filter <skype_text>'
-  c.description = 'Filters skype text to remove xml junk'
-  c.action do |args, options|
-    temp = Tempfile.new 'filter'
-    File.open(args[0]) do |f|
-      f.each_line do |line|
-        line.strip!
-        line.downcase!
-        line.gsub!(/<.*?>/, "")
-        line.gsub! "&amp;", "&"
-        line.gsub! "&quot;", "\""
-        line.gsub! "&apos;", "\'"
-        line.gsub! "&gt;", ">"
-        line.gsub! "&lt;", "<"
-        temp.write line + "\n"
-      end
-    end
-    temp.close
-    FileUtils.mv(temp, args[0])
-  end
+opts = Trollop::options do
+  banner "usage: markov <#{COMMANDS.join "|"}> [options...]"
+  opt :config, 'Config directory', :type => String, :default => '~/.markov'
+  opt :trace, 'Print out stack traces', :short => '-t'
+  stop_on COMMANDS
 end
+
+Trollop::die "no command given. Available options: [#{COMMANDS.join "|"}]" if ARGV.empty?
+
+cmd = ARGV.shift
+opts.merge! parse_cmd_opts(cmd)
 
