@@ -20,11 +20,13 @@ class MarkovCommand
         depends :create, :rank
       end
     when "process"
+      chunkers = Markov::ChunkingStrategy.strategies.map(&:implements).join "|"
+      tokenizers = Markov::TokenizingStrategy.strategies.map(&:implements).join "|"
       Trollop::options do
         banner "usage: markov process [options] <file1> [[file2]...]"
         opt :chain, 'Chain to build on', :type => String, :default => 'default'
-        opt :chunker, 'Strategy to break file into chunks', :type => String, :default => 'line'
-        opt :tokenizer, 'Strategy to tokenize chunks of text', :type => String, :default => 'naive'
+        opt :chunker, "Strategy to break file into chunks (Available: #{chunkers})", :type => String, :default => 'line'
+        opt :tokenizer, "Strategy to tokenize chunks of text (Available: #{tokenizers})", :type => String, :default => 'naive'
         opt :chunk_size, 'Number of chunks to consider at once', :type => Integer, :default => 1, :short => '-s'
         opt :chunk_joiner, 'Separator used when processing mulitple chunks at once', :type => String, :default => ' ', :short => '-j'
       end
@@ -46,9 +48,11 @@ class MarkovCommand
     if @opts[:list]
       columns = ["Chain Name", "Rank"]
       columns << "Records" if @opts[:with_records]
+
       row_format = "%-20s" * columns.size
       puts row_format % columns
       puts row_format % columns.map {|s| "-" * s.size}
+
       @db.get_chains @opts[:with_records] do |chain|
         puts row_format % chain
       end
@@ -65,7 +69,27 @@ class MarkovCommand
       num = @db.delete_chain @opts[:destroy]
       puts "Deleted #{num} " + (num == 1 ? "chain" : "chains")
     else
-      Trollop::die "no command given."
+      Trollop::die "no command given"
+    end
+  end
+
+  def process
+    Trollop::die "no files to process, exiting" if ARGV.empty?
+    opts = {
+      :chunker => @opts[:chunker].to_sym,
+      :tokenizer => @opts[:tokenizer].to_sym,
+      :chunker_opts => { :every => @opts[:chunk_size], :join => @opts[:chunk_joiner] },
+      :tokenizer_opts => {}
+    }
+    processor = Markov::TextProcessor.new @db, @opts[:chain], opts
+    until (file = ARGV.shift).nil?
+      File.open(file) do |f|
+        processor.process(f) do |bytes, size|
+          progress = size.nil? ? "#{bytes}" : "#{(bytes * 100 / size)}%"
+          print "Processing #{file}...#{progress}\r"
+        end
+        puts "Finished processing #{file}"
+      end
     end
   end
 
@@ -87,10 +111,16 @@ class MarkovCommand
       Dir.mkdir config_dir unless Dir.exists? config_dir
       @db = Markov::Database.new File.join(config_dir, 'markov.db')
 
+      row = @db.get_chain "default"
+      unless row
+        @db.put_chain "default", 1
+      end
+
       self.send cmd
     rescue Exception => e
-      puts e.message
+      puts "Error: " + e.message
       puts e.backtrace if @opts[:trace]
+      exit(-1)
     end
   end
 end
