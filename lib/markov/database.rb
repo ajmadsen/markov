@@ -34,7 +34,7 @@ module Markov
       @db = SQLite3::Database.new database
       @db.execute_batch SCHEMA
 
-      @select_chain_id = @db.prepare "SELECT `id` FROM `chains` WHERE `name` = ? LIMIT 1"
+      @select_chain_id = @db.prepare "SELECT `id`,`rank` FROM `chains` WHERE `name` = ? LIMIT 1"
       @select_chains = @db.prepare "SELECT `name`,`rank` FROM `chains`"
       @select_chains_with_records = @db.prepare <<-SQL
         SELECT
@@ -72,12 +72,12 @@ module Markov
     end
 
     def get_chain(name)
-      row = @cache[:chain][[name, rank]]
+      row = @cache[:chain][name]
       return row unless row.nil?
-      @select_chain_id.execute name, rank do |result|
+      @select_chain_id.execute name do |result|
         row = result.next
       end
-      @cache[:chain][[name, rank]] = row ? row.first : nil
+      @cache[:chain][name] = row
     end
 
     def get_chains(with_records=false)
