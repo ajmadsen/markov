@@ -14,6 +14,10 @@ module Markov
         return nil unless @strategies
         @strategies.find {|s| s.implements == strategy}
       end
+
+      def strategies
+        @strategies
+      end
     end
 
     def initialize(io=nil, options={})
@@ -42,6 +46,10 @@ module Markov
       def find(strategy)
         return nil unless @strategies
         @strategies.find {|s| s.implements == strategy}
+      end
+
+      def strategies
+        @strategies
       end
     end
 
