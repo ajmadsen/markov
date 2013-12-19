@@ -3,52 +3,97 @@
 require 'markov'
 require 'trollop'
 
-COMMANDS = %w(chain process generate)
+class MarkovCommand
+  COMMANDS = %w(chain process generate)
 
-def parse_cmd_opts(cmd)
-  case cmd
-  when "chain"
-    Trollop::options do
-      banner "usage: markov chain [options]"
-      opt :create, 'Create chain with given name', :type => String
-      opt :rank, 'Rank of chain to be created', :type => Integer
-      opt :destroy, 'Destroy chain with given name', :type => String
-      opt :list, 'List all known chains'
-      conflicts :create, :destroy, :list
-      depends :create, :rank
+  def parse_cmd_opts(cmd)
+    case cmd
+    when "chain"
+      Trollop::options do
+        banner "usage: markov chain [options]"
+        opt :create, 'Create chain with given name', :type => String
+        opt :rank, 'Rank of chain to be created', :type => Integer
+        opt :destroy, 'Destroy chain with given name', :type => String
+        opt :list, 'List all known chains'
+        opt :with_records, 'Show number of entries in each chain'
+        conflicts :create, :destroy, :list
+        depends :create, :rank
+      end
+    when "process"
+      Trollop::options do
+        banner "usage: markov process [options] <file1> [[file2]...]"
+        opt :chain, 'Chain to build on', :type => String, :default => 'default'
+        opt :chunker, 'Strategy to break file into chunks', :type => String, :default => 'line'
+        opt :tokenizer, 'Strategy to tokenize chunks of text', :type => String, :default => 'naive'
+        opt :chunk_size, 'Number of chunks to consider at once', :type => Integer, :default => 1, :short => '-s'
+        opt :chunk_joiner, 'Separator used when processing mulitple chunks at once', :type => String, :default => ' ', :short => '-j'
+      end
+    when "generate"
+      Trollop::options do
+        banner "usage: markov generate [options]"
+        opt :chain, 'Chain to generate from', :type => String, :default => 'default'
+        opt :strategy, 'Strategy to generate text', :type => String, :default => 'line'
+        opt :number, 'Number of generations to run', :type => Integer, :default => 1
+        opt :min, 'Minimum length of generated text, in words', :type => Integer, :default => 0
+        opt :max, 'Maximum length of generated text, in words', :type => Integer, :default => -1
+      end
+    else
+      Trollop::die "unrecognized command. Available commands [#{COMMANDS.join "|"}]"
     end
-  when "process"
-    Trollop::options do
-      banner "usage: markov process [options] <file1> [[file2]...]"
-      opt :chain, 'Chain to build on', :type => String, :default => 'default'
-      opt :chunker, 'Strategy to break file into chunks', :type => String, :default => 'line'
-      opt :tokenizer, 'Strategy to tokenize chunks of text', :type => String, :default => 'naive'
-      opt :chunk_size, 'Number of chunks to consider at once', :type => Integer, :default => 1, :short => '-s'
-      opt :chunk_joiner, 'Separator used when processing mulitple chunks at once', :type => String, :default => ' ', :short => '-j'
+  end
+
+  def chain
+    if @opts[:list]
+      columns = ["Chain Name", "Rank"]
+      columns << "Records" if @opts[:with_records]
+      row_format = "%-20s" * columns.size
+      puts row_format % columns
+      puts row_format % columns.map {|s| "-" * s.size}
+      @db.get_chains @opts[:with_records] do |chain|
+        puts row_format % chain
+      end
+    elsif @opts[:create]
+      begin
+        @db.put_chain @opts[:create], @opts[:rank]
+        puts "Created chain #{@opts[:create]} with rank #{@opts[:rank]}"
+      rescue SQLite3::ConstraintException
+        puts "Chain named #{@opts[:create]} already exists"
+        exit(1)
+      end
+    elsif @opts[:destroy]
+      puts "Deleting chain #{@opts[:destroy]}..."
+      num = @db.delete_chain @opts[:destroy]
+      puts "Deleted #{num} " + (num == 1 ? "chain" : "chains")
+    else
+      Trollop::die "no command given."
     end
-  when "generate"
-    Trollop::options do
-      banner "usage: markov generate [options]"
-      opt :chain, 'Chain to generate from', :type => String, :default => 'default'
-      opt :strategy, 'Strategy to generate text', :type => String, :default => 'line'
-      opt :number, 'Number of generations to run', :type => Integer, :default => 1
-      opt :min, 'Minimum length of generated text, in words', :type => Integer, :default => 0
-      opt :max, 'Maximum length of generated text, in words', :type => Integer, :default => -1
+  end
+
+  def main
+    begin
+      @opts = Trollop::options do
+        banner "usage: markov <#{COMMANDS.join "|"}> [options...]"
+        opt :config, 'Config directory', :type => String, :default => '~/.markov'
+        opt :trace, 'Print out stack traces', :short => '-t'
+        stop_on COMMANDS
+      end
+
+      Trollop::die "no command given. Available options: [#{COMMANDS.join "|"}]" if ARGV.empty?
+
+      cmd = ARGV.shift
+      @opts.merge! parse_cmd_opts cmd
+
+      config_dir = File.expand_path @opts[:config]
+      Dir.mkdir config_dir unless Dir.exists? config_dir
+      @db = Markov::Database.new File.join(config_dir, 'markov.db')
+
+      self.send cmd
+    rescue Exception => e
+      puts e.message
+      puts e.backtrace if @opts[:trace]
     end
-  else
-    Trollop::die "unknown command #{cmd.inspect}. Available options: [#{COMMANDS.join "|"}]"
   end
 end
 
-opts = Trollop::options do
-  banner "usage: markov <#{COMMANDS.join "|"}> [options...]"
-  opt :config, 'Config directory', :type => String, :default => '~/.markov'
-  opt :trace, 'Print out stack traces', :short => '-t'
-  stop_on COMMANDS
-end
-
-Trollop::die "no command given. Available options: [#{COMMANDS.join "|"}]" if ARGV.empty?
-
-cmd = ARGV.shift
-opts.merge! parse_cmd_opts(cmd)
+MarkovCommand.new.main
 
