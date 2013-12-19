@@ -3,12 +3,17 @@ require 'markov/strategies'
 
 module Markov
   class TextProcessor
-    def initialize(db, chain, rank, chunker = :line, tokenizer = :naive)
+    def initialize(db, chain, opts={})
+      @opts = {
+        :chunker => :line,
+        :tokenizer => :naive,
+        :chunker_opts => {},
+        :tokenizer_opts => {}
+      }.merge opts
       @db = db
-      @chain_id = @db.get_chain(chain, rank) || @db.put_chain(chain, rank)
-      @rank = rank
-      @chunker = ChunkingStrategy.find(chunker) or raise ArgumentError, "#{chunker} is not a valid chunker strategy"
-      @tokenizer = TokenizingStrategy.find(tokenizer) or raise ArgumentError, "#{tokenizer} is not a valid tokenizer strategy"
+      @chain_id, @rank = (@db.get_chain(chain) or raise ArgumentError, "Chain #{chain} does not exist")
+      @chunker = ChunkingStrategy.find(@opts[:chunker]) or raise ArgumentError, "#{@opts[:chunker]} is not a valid chunker strategy"
+      @tokenizer = TokenizingStrategy.find(@opts[:tokenizer]) or raise ArgumentError, "#{@opts[:tokenizer]} is not a valid tokenizer strategy"
     end
 
     def process(io)
