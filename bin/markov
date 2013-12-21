@@ -31,10 +31,11 @@ class MarkovCommand
         opt :chunk_joiner, 'Separator used when processing mulitple chunks at once', :type => String, :default => ' ', :short => '-j'
       end
     when "generate"
+      generators = Markov::GeneratingStrategy.strategies.map(&:implements).join "|"
       Trollop::options do
         banner "usage: markov generate [options]"
         opt :chain, 'Chain to generate from', :type => String, :default => 'default'
-        opt :strategy, 'Strategy to generate text', :type => String, :default => 'line'
+        opt :strategy, "Strategy to generate text (Available: #{generators})", :type => String, :default => 'line'
         opt :number, 'Number of generations to run', :type => Integer, :default => 1
         opt :min, 'Minimum length of generated text, in words', :type => Integer, :default => 0
         opt :max, 'Maximum length of generated text, in words', :type => Integer, :default => -1
@@ -93,17 +94,30 @@ class MarkovCommand
     end
   end
 
+  def generate
+    strategy = Markov::GeneratingStrategy.find @opts[:strategy].to_sym
+    Trollop::die "not a valid generator" unless strategy
+
+    opts = {
+      :min => @opts[:min],
+      :max => @opts[:max]
+    }
+
+    generator = strategy.new @db, @opts[:chain], opts
+    puts generator.generate(@opts[:number]).join "\n\n"
+  end
+
   def main
+    @opts = Trollop::options do
+      banner "usage: markov <#{COMMANDS.join "|"}> [options...]"
+      opt :config, 'Config directory', :type => String, :default => '~/.markov'
+      opt :trace, 'Print out stack traces', :short => '-t'
+      stop_on COMMANDS
+    end
+
+    Trollop::die "no command given. Available options: [#{COMMANDS.join "|"}]" if ARGV.empty?
+
     begin
-      @opts = Trollop::options do
-        banner "usage: markov <#{COMMANDS.join "|"}> [options...]"
-        opt :config, 'Config directory', :type => String, :default => '~/.markov'
-        opt :trace, 'Print out stack traces', :short => '-t'
-        stop_on COMMANDS
-      end
-
-      Trollop::die "no command given. Available options: [#{COMMANDS.join "|"}]" if ARGV.empty?
-
       cmd = ARGV.shift
       @opts.merge! parse_cmd_opts cmd
 
