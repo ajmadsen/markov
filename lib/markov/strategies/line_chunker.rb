@@ -2,15 +2,16 @@ require 'markov/strategies'
 
 module Markov
   class LineChunker < ChunkingStrategy
-    @implements = :line
-
-    def initialize(io, options={})
-      super
-      @options = {
-        :every => 1,
-        :join => " "
-      }.merge options
+    class << self
+      def defaults
+        {
+          :every => 1,
+          :join => " "
+        }
+      end
     end
+
+    @implements = :line
 
     def each
       @io.each.each_slice(@options[:every]) do |chunk|

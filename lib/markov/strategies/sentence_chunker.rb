@@ -2,17 +2,18 @@ require 'markov/strategies'
 
 module Markov
   class SentenceChunker < ChunkingStrategy
-    @implements = :sentence
-
-    PUNCTUATION = /(\.\?\!)/
-
-    def initialize(io, options={})
-      super
-      @options = {
-        :every => 1,
-        :join => " "
-      }.merge options
+    class << self
+      def defaults
+        {
+          :every => 1,
+          :join => " "
+        }
+      end
     end
+
+    PUNCTUATION = /(\.\?!)/
+
+    @implements = :sentence
 
     def each
       buffer = []

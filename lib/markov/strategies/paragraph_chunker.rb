@@ -2,15 +2,16 @@ require 'markov/strategies'
 
 module Markov
   class ParagraphChunker < ChunkingStrategy
-    @implements = :paragraph
-
-    def initialize(io, options={})
-      super
-      @options = {
-        :every => 1,
-        :join => " "
-      }.merge(options)
+    class << self
+      def defaults
+        {
+          :every => 1,
+          :join => " "
+        }
+      end
     end
+
+    @implements = :paragraph
 
     def each
       @io.each("\n\n").each_slice(@options[:every]) do |paragraph|
