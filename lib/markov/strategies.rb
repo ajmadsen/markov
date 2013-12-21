@@ -87,7 +87,9 @@ module Markov
       end
     end
 
-    def initialize(opts={})
+    def initialize(db, chain, opts={})
+      @db = db
+      @chain, @rank = (db.get_chain chain or raise ArgumentError, "chain #{chain} does not exist")
       @opts = self.class.defaults.merge opts
     end
 
