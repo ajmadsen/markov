@@ -15,6 +15,8 @@ var (
 	nstr     int
 )
 
+const terminals = ".!?\n"
+
 func init() {
 	flag.StringVar(&filename, "p", "", "file to parse")
 	flag.IntVar(&mintok, "m", 20, "minimum tokens to generate")
@@ -37,45 +39,57 @@ func main() {
 }
 
 func doParse() {
-	log.Printf("opening db %s for chain storage", db)
+	log.Printf("opening db [%s] for chain storage", db)
 	db, err := OpenDB(db)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("opening file %s for chain generation", filename)
+	log.Printf("opening file [%s] for chain generation", filename)
 	f, err := os.Open(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	m := NewMarkov(ntok, db)
+	m := NewMarkov(ntok, terminals, db)
 
-	log.Printf("parsing file with ntok = %d", ntok)
+	log.Printf("parsing file with ntok = [%d]", ntok)
 	err = m.Parse(f)
 
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	err = m.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("success")
 }
 
 func doGenerate() {
-	log.Printf("opening db %s for chain storage", db)
+	log.Printf("opening db [%s] for chain storage", db)
 	db, err := OpenDB(db)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	m := NewMarkov(ntok, db)
+	m := NewMarkov(ntok, terminals, db)
 	strs := make([]string, nstr)
 
 	for i := 0; i < nstr; i++ {
-		log.Printf("generating string with mintok = %v", mintok)
+		log.Printf("generating string with mintok = [%v]", mintok)
 		strs[i], err = m.Generate(mintok)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	log.Printf("generated %n strings:\n%s", strings.Join(strs, "\n"))
+	log.Printf("generated [%d] strings:\n%s", nstr, strings.Join(strs, "\n"))
+
+	err = m.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
