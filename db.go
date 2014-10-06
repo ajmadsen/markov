@@ -12,9 +12,10 @@ import (
 var tables = []string{
 	`
 		CREATE TABLE IF NOT EXISTS chain (
-			id integer NOT NULL PRIMARY KEY,
+			id integer NOT NULL,
 			phrase varchar(4000) NOT NULL,
-			next varchar(1000) NOT NULL
+			next varchar(1000) NOT NULL,
+			PRIMARY KEY (id)
 		)
 	`,
 }

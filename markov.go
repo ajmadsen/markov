@@ -5,11 +5,23 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
-var sp = regexp.MustCompile(`[\s]+`)
+var (
+	// matches one or more whitespace characters
+	sp = regexp.MustCompile(`[\s]+`)
 
-var assoc = regexp.MustCompile(` ([,.!?:\]\)\}])|([\[\(\{]) | ([-\/]) `)
+	// matches and captures characters to remove space between them and words
+	assoc = regexp.MustCompile(` ([,.!?:\]\)\}])|([\[\(\{]) | ([-\/]) `)
+
+	// matches duplicate punctuation characters
+	punct = regexp.MustCompile(`(\.\.\.|[?!.,"'])[?!.,]*`)
+
+	// cleans up quotation marks
+	quot = regexp.MustCompile(`(?:^"| ") (.*?) ?(?:"|$) ?`)
+)
 
 type Markov struct {
 	db        *DB
@@ -17,6 +29,8 @@ type Markov struct {
 	terminals string
 }
 
+// NewMarkov creates a new Markov object to parse new seed text or generate
+// phrases from existing stored relations.
 func NewMarkov(ntok int, terminals string, db *DB) *Markov {
 	if ntok < 1 {
 		panic("ntok too small")
@@ -29,14 +43,15 @@ func NewMarkov(ntok int, terminals string, db *DB) *Markov {
 	}
 }
 
+// Parse parses seed text using a tokenizer that splits text by spaces,
+// punctuation, and the given list of terminal characters.
 func (m *Markov) Parse(r io.Reader) error {
-	ntok := 0
-
 	s := bufio.NewScanner(r)
 	s.Split(scanner(m.terminals))
 
 	tokbuf := make([]string, m.ntok)
 
+	// group this in one big transaction
 	tx, err := m.db.Begin()
 	if err != nil {
 		return err
@@ -55,22 +70,20 @@ func (m *Markov) Parse(r io.Reader) error {
 			// flush token buffer
 			tokbuf = make([]string, m.ntok)
 		} else {
+			// shift token buffer left 1 and append current token
 			copy(tokbuf, tokbuf[1:])
 			tokbuf[m.ntok-1] = tok
 		}
-
-		ntok++
-		if ntok%10000 == 0 {
-			//			log.Printf("Parsed %d tok", ntok)
-		}
 	}
 
+	// check for parsing errors
 	err = s.Err()
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
+	// commit transaction
 	err = tx.Commit()
 	if err != nil {
 		return err
@@ -83,7 +96,8 @@ func (m *Markov) Generate(mintok int) (string, error) {
 	tokbuf := make([]string, m.ntok)
 	var buf []string
 
-	for len(buf) < mintok || !strings.Contains(m.terminals, tokbuf[m.ntok-1]) {
+	// loop until we hit the minimum length, and we end with a terminal
+	for !(len(buf) >= mintok && strings.Contains(m.terminals, tokbuf[m.ntok-1])) {
 		tok, err := m.db.Next(strings.Join(tokbuf, " "))
 		if err != nil {
 			return "", err
@@ -91,34 +105,78 @@ func (m *Markov) Generate(mintok int) (string, error) {
 
 		buf = append(buf, tok)
 
+		// check for termination of generated phrase
 		if strings.Contains(m.terminals, tok) {
+			// if the terminating token isn't punctuation, add a period for funsies
+			r, _ := utf8.DecodeRuneInString(tok)
+			if !unicode.IsPunct(r) {
+				buf = append(buf, ".")
+			}
+
+			// clear the token buf
 			tokbuf = make([]string, m.ntok)
 		} else {
+			// left shift tokbuf and append current token
 			copy(tokbuf, tokbuf[1:])
 			tokbuf[m.ntok-1] = tok
 		}
 	}
 
+	// join buffer into string
 	str := strings.Join(buf, " ")
+
+	// replace all whitespace+ with a single space
 	str = sp.ReplaceAllLiteralString(str, " ")
-	str = assoc.ReplaceAllString(str, "${1}")
+
+	// fix apostrophes, but break single quotes... c'est la vie.
 	str = strings.Replace(str, " ' ", "'", -1)
 
-	// clean up quotes kinda
-	for strings.Contains(str, " \" ") {
-		// first group right
-		str = strings.Replace(str, " \" ", " \"", 1)
+	// remove spaces between certain punctuation and words
+	str = assoc.ReplaceAllString(str, "${1}")
 
-		// then group left
-		str = strings.Replace(str, " \" ", "\" ", 1)
+	// clean up quotes kinda, attempting to form coherent quotations
+	str = quot.ReplaceAllString(str, " \"${1}\" ")
+
+	// strip leading spaces and punctuation
+	str = strings.TrimLeft(str, " !?.,")
+
+	// strip trailing spaces
+	str = strings.TrimRight(str, " ")
+
+	// clean up punctuation
+	str = punct.ReplaceAllString(str, "${1}")
+
+	// fix mismatched quotes
+	if strings.Count(str, "\"")%2 != 0 {
+		str += "\""
 	}
 
-	// strip leading spaces
-	str = strings.TrimPrefix(str, " ")
+	// clean up parens
+	start := 0
+	tmp := str
+	nlparen := strings.Count(str, "(")
+	nrparen := strings.Count(str, ")")
+	for nlparen < nrparen {
+		idx := strings.Index(tmp, ")")
+		idx2 := strings.LastIndex(tmp[:idx], " ") + 1
+
+		str = str[:start+idx2] + "(" + str[start+idx2:]
+		start += idx
+		nlparen++
+		if idx+1 < len(tmp) {
+			tmp = tmp[idx+1:]
+		}
+	}
+
+	for nrparen < nlparen {
+		str += ")"
+		nrparen++
+	}
 
 	return str, nil
 }
 
+// Close closes the underlying database connection
 func (m *Markov) Close() error {
 	return m.db.Close()
 }
