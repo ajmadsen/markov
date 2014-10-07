@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"log"
 	"math/rand"
 	"time"
 
@@ -143,7 +142,6 @@ func (db *DB) Next(phrase string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//log.Printf("db: %d choices for phrase: %s", nsel, phrase)
 
 	rval := rand.Intn(nsel)
 	row = db.query.QueryRow(phrase, rval)
@@ -151,7 +149,6 @@ func (db *DB) Next(phrase string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//log.Printf("db: selected [%d]: %s", rval, ret)
 
 	return ret, nil
 }
@@ -173,13 +170,11 @@ func (tx *TX) Insert(phrase, next string) error {
 }
 
 func (tx *TX) Rollback() error {
-	log.Print("Rollback!")
 	tx.insert.Close()
 	return tx.tx.Rollback()
 }
 
 func (tx *TX) Commit() error {
-	log.Print("Commit!")
 	// clean up associated
 	tx.insert.Close()
 
@@ -193,7 +188,6 @@ func (tx *TX) Commit() error {
 	}
 
 	// do actual commit
-	log.Print("actual log")
 	err = tx.tx.Commit()
 	if err != nil {
 		return err
