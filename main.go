@@ -1,95 +1,133 @@
 package main
 
 import (
-	"flag"
-	"log"
+	"fmt"
 	"os"
-	"strings"
-)
+	"strconv"
 
-var (
-	filename string
-	mintok   int
-	db       string
-	ntok     int
-	nstr     int
+	"github.com/docopt/docopt-go"
 )
 
 const terminals = ".!?\n"
 
-func init() {
-	flag.StringVar(&filename, "p", "", "file to parse")
-	flag.IntVar(&mintok, "m", 20, "minimum tokens to generate")
-	flag.StringVar(&db, "db", "markov.db", "markov chain database")
-	flag.IntVar(&ntok, "t", 2, "number of tokens to use for chain")
-	flag.IntVar(&nstr, "n", 0, "number of strings to generate")
-}
+var usage = `Markov Chains.
+
+Usage:
+  markov from (db <db> | file <file>) generate <num> [options]
+  markov into <db> parse <file>... [options]
+  markov -h | --help
+  markov --version
+
+Options:
+  -h, --help                  Show this screen.
+  --version                   Show the version.
+  -m NTOK, --min-tokens NTOK  Minimum number of tokens in generated lines. [default: 20]
+  -r RANK, --rank RANK        Rank of markov chain. [default: 2]`
 
 func main() {
-	flag.Parse()
+	opts, err := docopt.Parse(usage, nil, true, "Markov 0.1", false)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
 	switch {
-	case filename != "":
-		doParse()
-	case nstr > 0:
-		doGenerate()
-	default:
-		flag.PrintDefaults()
+	case opts["from"].(bool):
+		generate(opts)
+	case opts["into"].(bool):
+		parse(opts)
 	}
 }
 
-func doParse() {
-	log.Printf("opening db [%s] for chain storage", db)
-	db, err := OpenDB(db)
+func generate(opts map[string]interface{}) {
+	mintok, err := strconv.Atoi(opts["--min-tokens"].(string))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("--min-tokens should be an integer value")
+		os.Exit(-1)
 	}
 
-	log.Printf("opening file [%s] for chain generation", filename)
-	f, err := os.Open(filename)
+	rank, err := strconv.Atoi(opts["--rank"].(string))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Print("--rank should be an integer value\n")
+		os.Exit(-1)
 	}
 
-	m := NewMarkov(ntok, terminals, db)
-
-	log.Printf("parsing file with ntok = [%d]", ntok)
-	err = m.Parse(f)
-
+	ngens, err := strconv.Atoi(opts["<num>"].(string))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Print("<num> should be an integer value\n")
+		os.Exit(-1)
 	}
 
-	err = m.Close()
-	if err != nil {
-		log.Fatal(err)
+	var dbfile string
+	if opts["db"].(bool) {
+		dbfile = opts["<db>"].(string)
+	} else {
+		dbfile = ":memory:"
 	}
 
-	log.Printf("success")
-}
-
-func doGenerate() {
-	log.Printf("opening db [%s] for chain storage", db)
-	db, err := OpenDB(db)
+	db, err := OpenDB(dbfile)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("failed to open database [%s]: %s\n", opts["<db>"], err)
+		os.Exit(-1)
 	}
 
-	m := NewMarkov(ntok, terminals, db)
-	strs := make([]string, nstr)
+	m := NewMarkov(rank, terminals, db)
 
-	for i := 0; i < nstr; i++ {
-		log.Printf("generating string with mintok = [%v]", mintok)
-		strs[i], err = m.Generate(mintok)
+	if opts["file"].(bool) {
+		fnames := opts["<file>"].([]string)
+		parseFiles(m, fnames)
+	}
+
+	for i := 0; i < ngens; i++ {
+		line, err := m.Generate(mintok)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Printf("error generating from chain: %s\n", err)
+			os.Exit(-1)
 		}
+		fmt.Println(line)
+	}
+}
+
+func parse(opts map[string]interface{}) {
+	rank, err := strconv.Atoi(opts["--rank"].(string))
+	if err != nil {
+		fmt.Print("--rank should be an integer value\n")
+		os.Exit(-1)
 	}
 
-	log.Printf("generated [%d] strings:\n%s", nstr, strings.Join(strs, "\n"))
+	db, err := OpenDB(opts["<db>"].(string))
+	if err != nil {
+		fmt.Printf("failed to open database [%s]: %s\n", opts["<db>"], err)
+		os.Exit(-1)
+	}
+
+	m := NewMarkov(rank, terminals, db)
+
+	fnames := opts["<file>"].(string)
+	parseFiles(m, []string{fnames})
 
 	err = m.Close()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("error closing chain: %s\n", err)
+	}
+}
+
+func parseFiles(m *Markov, fnames []string) {
+	files := make([]*os.File, len(fnames))
+	for i, fname := range fnames {
+		f, err := os.Open(fname)
+		if err != nil {
+			fmt.Printf("failed to open file [%s]: %s\n", fname, err)
+			os.Exit(-1)
+		}
+		files[i] = f
+	}
+
+	for _, file := range files {
+		err := m.Parse(file)
+		if err != nil {
+			fmt.Printf("error parsing file [%s]: %s\n", file.Name(), err)
+		}
+		file.Close()
 	}
 }
