@@ -2,12 +2,12 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
-import "bytes"
-import "strings"
-import "unicode"
-import "unicode/utf8"
 
 func scanner(terminals string) bufio.SplitFunc {
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
