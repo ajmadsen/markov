@@ -25,20 +25,20 @@ var (
 
 type Markov struct {
 	db        *DB
-	ntok      int
+	rank      int
 	terminals string
 }
 
 // NewMarkov creates a new Markov object to parse new seed text or generate
 // phrases from existing stored relations.
-func NewMarkov(ntok int, terminals string, db *DB) *Markov {
-	if ntok < 1 {
-		panic("ntok too small")
+func NewMarkov(rank int, terminals string, db *DB) *Markov {
+	if rank < 1 {
+		panic("rank too small")
 	}
 
 	return &Markov{
 		db,
-		ntok,
+		rank,
 		terminals,
 	}
 }
@@ -49,7 +49,7 @@ func (m *Markov) Parse(r io.Reader) error {
 	s := bufio.NewScanner(r)
 	s.Split(scanner(m.terminals))
 
-	tokbuf := make([]string, m.ntok)
+	tokbuf := make([]string, m.rank)
 
 	// group this in one big transaction
 	tx, err := m.db.Begin()
@@ -68,11 +68,11 @@ func (m *Markov) Parse(r io.Reader) error {
 
 		if strings.Contains(m.terminals, tok) {
 			// flush token buffer
-			tokbuf = make([]string, m.ntok)
+			tokbuf = make([]string, m.rank)
 		} else {
 			// shift token buffer left 1 and append current token
 			copy(tokbuf, tokbuf[1:])
-			tokbuf[m.ntok-1] = tok
+			tokbuf[m.rank-1] = tok
 		}
 	}
 
@@ -93,11 +93,11 @@ func (m *Markov) Parse(r io.Reader) error {
 }
 
 func (m *Markov) Generate(mintok int) (string, error) {
-	tokbuf := make([]string, m.ntok)
+	tokbuf := make([]string, m.rank)
 	var buf []string
 
 	// loop until we hit the minimum length, and we end with a terminal
-	for !(len(buf) >= mintok && strings.Contains(m.terminals, tokbuf[m.ntok-1])) {
+	for !(len(buf) >= mintok && strings.Contains(m.terminals, tokbuf[m.rank-1])) {
 		tok, err := m.db.Next(strings.Join(tokbuf, "\000"))
 		if err != nil {
 			return "", err
@@ -114,11 +114,11 @@ func (m *Markov) Generate(mintok int) (string, error) {
 			}
 
 			// clear the token buf
-			tokbuf = make([]string, m.ntok)
+			tokbuf = make([]string, m.rank)
 		} else {
 			// left shift tokbuf and append current token
 			copy(tokbuf, tokbuf[1:])
-			tokbuf[m.ntok-1] = tok
+			tokbuf[m.rank-1] = tok
 		}
 	}
 
