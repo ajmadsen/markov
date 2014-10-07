@@ -60,7 +60,7 @@ func (m *Markov) Parse(r io.Reader) error {
 	for s.Scan() {
 		tok := s.Text()
 
-		err = tx.Insert(strings.Join(tokbuf, " "), tok)
+		err = tx.Insert(strings.Join(tokbuf, "\000"), tok)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -98,7 +98,7 @@ func (m *Markov) Generate(mintok int) (string, error) {
 
 	// loop until we hit the minimum length, and we end with a terminal
 	for !(len(buf) >= mintok && strings.Contains(m.terminals, tokbuf[m.ntok-1])) {
-		tok, err := m.db.Next(strings.Join(tokbuf, " "))
+		tok, err := m.db.Next(strings.Join(tokbuf, "\000"))
 		if err != nil {
 			return "", err
 		}
@@ -134,9 +134,6 @@ func (m *Markov) Generate(mintok int) (string, error) {
 	// remove spaces between certain punctuation and words
 	str = assoc.ReplaceAllString(str, "${1}")
 
-	// clean up quotes kinda, attempting to form coherent quotations
-	str = quot.ReplaceAllString(str, " \"${1}\" ")
-
 	// strip leading spaces and punctuation
 	str = strings.TrimLeft(str, " !?.,")
 
@@ -146,10 +143,8 @@ func (m *Markov) Generate(mintok int) (string, error) {
 	// clean up punctuation
 	str = punct.ReplaceAllString(str, "${1}")
 
-	// fix mismatched quotes
-	if strings.Count(str, "\"")%2 != 0 {
-		str += "\""
-	}
+	// clean up quotes kinda, attempting to form coherent quotations
+	str = quot.ReplaceAllString(str, " \"${1}\" ")
 
 	// clean up parens
 	start := 0

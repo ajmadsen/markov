@@ -9,7 +9,7 @@ import (
 	_ "github.com/mxk/go-sqlite/sqlite3"
 )
 
-var tables = []string{
+var initStmts = []string{
 	`
 		CREATE TABLE IF NOT EXISTS chain (
 			id integer NOT NULL,
@@ -17,6 +17,10 @@ var tables = []string{
 			next varchar(1000) NOT NULL,
 			PRIMARY KEY (id)
 		)
+	`,
+	`
+		CREATE INDEX IF NOT EXISTS ix_chain_phrase
+		ON chain(phrase)
 	`,
 }
 
@@ -65,8 +69,8 @@ func OpenDB(filename string) (*DB, error) {
 		return nil, err
 	}
 
-	for _, table := range tables {
-		_, err = tx.Exec(table)
+	for _, stmt := range initStmts {
+		_, err = tx.Exec(stmt)
 		if err != nil {
 			tx.Rollback()
 			return nil, err
